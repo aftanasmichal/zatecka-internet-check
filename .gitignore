@@ -1,2 +1,6 @@
 # Wrangler local cache — never commit
+.wrangler/
 worker/.wrangler/
+
+# Test/scratch files
+*.eml
