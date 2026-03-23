@@ -205,7 +205,6 @@
        class="btn-check"
        href="https://github.com/aftanasmichal/zatecka-internet-check/actions/workflows/poll.yml"
        target="_blank" rel="noopener">⟳ Check now</a>
-    <div id="last-updated"></div>
   </div>
 </header>
 
@@ -544,11 +543,8 @@ async function refresh() {
     renderUptime(events);
     renderTimeline(events);
     renderIncidents(events);
-    document.getElementById('last-updated').textContent =
-      'Dashboard updated ' + new Date().toLocaleString('cs-CZ', { ...CZ, timeStyle: 'short', dateStyle: 'short' });
   } catch (e) {
     console.error(e);
-    document.getElementById('last-updated').textContent = 'Error loading data';
   }
 }
 
