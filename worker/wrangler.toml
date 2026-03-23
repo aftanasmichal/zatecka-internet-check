@@ -1,3 +1,10 @@
 name = "zatecka-check-now"
 main = "index.js"
 compatibility_date = "2024-01-01"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[[kv_namespaces]]
+binding = "KV"
+id = "620ec9cab32e4efd8391c6704cd673e0"
