@@ -515,20 +515,34 @@ function renderIncidents(events) {
 
 const WORKER_URL = 'https://zatecka-check-now.michal-aftanas.workers.dev';
 
-async function refreshCheckStatus() {
+let lastPolledAt = null;
+
+function renderCheckStatus() {
   const el = document.getElementById('check-status');
+  if (!lastPolledAt) return;
+  const diffS = Math.round((Date.now() - lastPolledAt) / 1000);
+  let ago;
+  if (diffS < 5)        ago = 'just now';
+  else if (diffS < 60)  ago = diffS + ' s ago';
+  else if (diffS < 3600) {
+    const m = Math.floor(diffS / 60), s = diffS % 60;
+    ago = m + ' min ' + s + ' s ago';
+  } else {
+    const h = Math.floor(diffS / 3600), m = Math.floor((diffS % 3600) / 60);
+    ago = h + ' h ' + m + ' min ago';
+  }
+  const timeStr = lastPolledAt.toLocaleString('cs-CZ', { ...CZ, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  el.innerHTML = `Last checked: <span class="ok">${ago} (${timeStr})</span>`;
+}
+
+async function refreshCheckStatus() {
   try {
     const data = await fetch(WORKER_URL).then(r => r.json());
-    if (!data.lastPolledAt) { el.innerHTML = '<span>Not yet polled</span>'; return; }
-
-    const finished = new Date(data.lastPolledAt);
-    const diffM = Math.round((Date.now() - finished) / 60000);
-    const ago = diffM < 2 ? 'just now' : diffM < 60 ? diffM + ' min ago' : Math.floor(diffM/60) + ' h ago';
-    const timeStr = finished.toLocaleString('cs-CZ', { ...CZ, timeStyle: 'short', dateStyle: 'short' });
-
-    el.innerHTML = `Last checked: <span class="ok" title="${timeStr}">${ago}</span>`;
+    if (!data.lastPolledAt) { document.getElementById('check-status').innerHTML = '<span>Not yet polled</span>'; return; }
+    lastPolledAt = new Date(data.lastPolledAt);
+    renderCheckStatus();
   } catch {
-    el.innerHTML = 'Last checked: <span>—</span>';
+    document.getElementById('check-status').innerHTML = 'Last checked: <span>—</span>';
   }
 }
 
@@ -564,7 +578,8 @@ document.getElementById('btn-check').addEventListener('click', async () => {
 refresh();
 refreshCheckStatus();
 setInterval(refresh, 5 * 60 * 1000);
-setInterval(refreshCheckStatus, 60 * 1000);
+setInterval(refreshCheckStatus, 60 * 1000);  // re-fetch from Worker
+setInterval(renderCheckStatus, 5 * 1000);    // re-render seconds counter
 </script>
 </body>
 </html>
