@@ -22,18 +22,20 @@ Tracks two SD-WAN links reported by the FortiGate FGT-40 router via email.
 ```
 FortiGate router (FGT-40)
   → sends email to fgt@palefire.com on every link up/down event
-  → received at michal@palefire.com (label: FortiGate)
+  → received at michal@palefire.com
 
-GitHub Actions (every 5 min, runs on GitHub servers — no laptop needed)
-  → scripts/poll.py fetches emails via Gmail API
+Cloudflare Worker cron (every 5 min, reliable)
+  → worker/index.js polls Gmail API for new FortiGate emails
   → new events appended to data/events-001.json (deduplicated by eventtime)
-  → if new data: git commit + push + Cloudflare Pages redeploy
+  → if new data: committed to GitHub via Contents API
+  → records last poll timestamp in Cloudflare KV
 
 Dashboard (https://zatecka-internet-check.pages.dev)
-  → static HTML/JS, reads data/*.json from same domain
+  → static HTML/JS served from Cloudflare Pages
+  → fetches data/*.json directly from GitHub raw URLs (always current)
   → shows current status, uptime %, 7-day timeline, incidents
-  → "Check Now" button triggers immediate poll via Cloudflare Worker proxy
-  → "Last checked" timestamp pulled from GitHub Actions API
+  → "Check Now" button triggers immediate poll via same Worker (POST /)
+  → "Last checked" timestamp pulled from Worker KV (GET /)
 ```
 
 ---
@@ -41,14 +43,14 @@ Dashboard (https://zatecka-internet-check.pages.dev)
 ## File structure
 
 ```
-.github/workflows/poll.yml   GitHub Actions cron job (every 5 min)
+.github/workflows/poll.yml   GitHub Actions — workflow_dispatch only (emergency manual recovery)
 data/index.json              Lists all data files
 data/events-001.json         Event log (rotates at 10 MB → events-002.json, etc.)
 index.html                   Dashboard (single static file)
-scripts/poll.py              Polls Gmail API, ingests new events
-scripts/ingest.py            Core: parses FortiGate HTML email → event dict, appends to JSON
-worker/index.js              Cloudflare Worker: proxy for "Check Now" button
-worker/wrangler.toml         Worker deployment config
+scripts/poll.py              Legacy: polls Gmail API, ingests new events (kept for emergency use)
+scripts/ingest.py            Core parser: FortiGate HTML email → event dict
+worker/index.js              Cloudflare Worker: cron poller + "Check Now" handler + KV status
+worker/wrangler.toml         Worker deployment config (includes cron trigger + KV binding)
 ```
 
 ---
@@ -57,17 +59,20 @@ worker/wrangler.toml         Worker deployment config
 
 | Secret | Stored in | Used by |
 |--------|-----------|---------|
-| `GMAIL_CLIENT_ID` | GitHub Actions Secret | poll.py — Gmail API auth |
-| `GMAIL_CLIENT_SECRET` | GitHub Actions Secret | poll.py — Gmail API auth |
-| `GMAIL_REFRESH_TOKEN` | GitHub Actions Secret | poll.py — Gmail API auth |
-| `CLOUDFLARE_API_TOKEN` | GitHub Actions Secret | wrangler pages deploy |
-| `GITHUB_TOKEN` (gh CLI OAuth) | Cloudflare Worker Secret | "Check Now" → trigger workflow dispatch |
+| `GMAIL_CLIENT_ID` | Cloudflare Worker Secret | Worker — Gmail API auth |
+| `GMAIL_CLIENT_SECRET` | Cloudflare Worker Secret | Worker — Gmail API auth |
+| `GMAIL_REFRESH_TOKEN` | Cloudflare Worker Secret | Worker — Gmail API auth |
+| `GITHUB_TOKEN` | Cloudflare Worker Secret | Worker — GitHub Contents API (read/write data files) |
 
-Local credential files (bootstrap only, not used by automation):
+GitHub Actions secrets (`GMAIL_*`, `CLOUDFLARE_API_TOKEN`) are no longer used by the cron but kept for emergency manual workflow_dispatch runs.
+
+Local credential files (bootstrap only):
 - `C:\Users\afink\.gmail-mcp\palefire\gcp-oauth.keys.json` — client_id + client_secret
 - `C:\Users\afink\.gmail-mcp\palefire\credentials.json` — refresh_token
 
 Gmail OAuth app: Google Cloud project `claude-gmail-490805`
+
+GitHub token: fine-grained PAT `zatecka-internet-check`, no expiration, permission: Contents read+write.
 
 ---
 
@@ -88,50 +93,60 @@ Each event in `data/events-*.json`:
 - `iface`: `wan` (main optical) or `a` (O2 5G backup)
 - `from`/`to`: `alive` or `dead`
 
-File rotation: when `events-001.json` hits 10 MB, a new `events-002.json` is created.
-`data/index.json` always lists all files; dashboard loads all of them.
+File rotation: when `events-001.json` hits 10 MB, a new `events-002.json` is created automatically by the Worker. `data/index.json` always lists all files; dashboard loads all of them.
 
 ---
 
 ## Deployment
 
-### Cloudflare Pages (dashboard)
-```bash
-cd projects/work/zatecka-internet-check
-wrangler pages deploy . --project-name zatecka-internet-check --branch main --commit-dirty=true
-```
-
-### Cloudflare Worker ("Check Now" proxy)
+### Cloudflare Worker (poller + "Check Now")
 ```bash
 cd projects/work/zatecka-internet-check/worker
 wrangler deploy
 ```
 
-### GitHub Actions secrets (if re-setting up)
+### Cloudflare Pages (dashboard)
+Only needed when `index.html` changes — data updates go directly to GitHub, not through Pages.
 ```bash
-gh secret set GMAIL_CLIENT_ID -R aftanasmichal/zatecka-internet-check
-gh secret set GMAIL_CLIENT_SECRET -R aftanasmichal/zatecka-internet-check
-gh secret set GMAIL_REFRESH_TOKEN -R aftanasmichal/zatecka-internet-check
-gh secret set CLOUDFLARE_API_TOKEN -R aftanasmichal/zatecka-internet-check
-# GITHUB_TOKEN is set as a Cloudflare Worker secret, not GitHub:
-gh auth token | wrangler secret put GITHUB_TOKEN --name zatecka-check-now
+cd projects/work/zatecka-internet-check
+wrangler pages deploy . --project-name zatecka-internet-check --branch main --commit-dirty=true
 ```
+
+### Worker secrets (if re-setting up from scratch)
+```bash
+cd projects/work/zatecka-internet-check/worker
+
+# Gmail credentials (from C:\Users\afink\.gmail-mcp\palefire\)
+echo <client_id>     | wrangler secret put GMAIL_CLIENT_ID
+echo <client_secret> | wrangler secret put GMAIL_CLIENT_SECRET
+echo <refresh_token> | wrangler secret put GMAIL_REFRESH_TOKEN
+
+# GitHub fine-grained PAT (Contents: read+write on zatecka-internet-check repo)
+echo <token> | wrangler secret put GITHUB_TOKEN
+```
+
+### KV namespace
+The `POLLER_STATE` KV namespace (id: `620ec9cab32e4efd8391c6704cd673e0`) stores `lastPolledAt`.
+If re-creating: `wrangler kv namespace create POLLER_STATE` → update id in `wrangler.toml`.
 
 ---
 
 ## Costs
 
 Everything is free:
-- **GitHub Actions** — unlimited minutes (public repo)
+- **Cloudflare Worker** — 100 000 req/day free (288 cron runs/day + manual triggers)
+- **Cloudflare KV** — 1 000 writes/day free (288 used), 100 000 reads/day free
 - **Cloudflare Pages** — unlimited requests and deploys
-- **Cloudflare Worker** — 100 000 req/day free (Check Now button only)
+- **GitHub** — public repo, Contents API unlimited for authenticated requests
 - **Gmail API** — free well within quota
 
 ---
 
 ## Maintenance notes
 
-- **Gmail refresh token expires?** Unlikely (Google only expires tokens after 6 months of inactivity or if OAuth app consent is revoked). If it does: re-run `gmail-mcp` auth for palefire account, update `GMAIL_REFRESH_TOKEN` GitHub Secret.
-- **GitHub OAuth token (for Worker) expires?** Run `gh auth token | wrangler secret put GITHUB_TOKEN --name zatecka-check-now` from the project's `worker/` directory.
-- **Adding a new interface?** Add it to the `IFACES` object in `index.html`. FortiGate emails will be picked up automatically as long as the interface name in the email matches.
-- **Data file rotation?** Handled automatically by `scripts/poll.py`. Old files stay read-only in the repo forever; `data/index.json` lists all of them and the dashboard loads all.
+- **Gmail refresh token expires?** Unlikely (Google only expires tokens after 6 months of inactivity or consent revocation). If it does: re-run `gmail-mcp` auth for palefire account, update `GMAIL_REFRESH_TOKEN` Worker secret.
+- **GitHub token expires?** Never — created with no expiration. If revoked: create new fine-grained PAT (`zatecka-internet-check` repo, Contents: read+write), run `echo <token> | wrangler secret put GITHUB_TOKEN` from `worker/` directory.
+- **Worker cron not firing?** Check Worker logs in Cloudflare dashboard → Workers & Pages → zatecka-check-now → Observability. Also verify via `GET https://zatecka-check-now.michal-aftanas.workers.dev` — if `lastPolledAt` is stale, something is wrong.
+- **Adding a new interface?** Add it to the `IFACES` object in `index.html` and redeploy Pages. FortiGate emails will be picked up automatically as long as the interface name matches.
+- **Data file rotation?** Handled automatically by the Worker. Old files stay in the repo forever; `data/index.json` lists all of them and the dashboard loads all.
+- **Emergency manual poll?** GitHub Actions → poll.yml → Run workflow. Or: `curl -X POST https://zatecka-check-now.michal-aftanas.workers.dev`.
