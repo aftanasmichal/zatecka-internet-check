@@ -39,6 +39,18 @@
     h1 { font-size: 1.4rem; font-weight: 700; }
     h1 span { color: var(--muted); font-weight: 400; font-size: 1rem; margin-left: 6px; }
     #last-updated { font-size: 0.78rem; color: var(--muted); }
+    .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+    #check-status { font-size: 0.78rem; color: var(--muted); }
+    #check-status .ok   { color: var(--green); }
+    #check-status .fail { color: var(--red); }
+    .btn-check {
+      font-size: 0.78rem; font-weight: 600;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 5px 12px;
+      cursor: pointer; text-decoration: none; white-space: nowrap;
+      transition: border-color 0.15s;
+    }
+    .btn-check:hover { border-color: var(--green); color: var(--green); }
 
     .container { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 
@@ -187,7 +199,14 @@
 
 <header>
   <h1>Žatecká <span>— Internet Status</span></h1>
-  <div id="last-updated">Loading…</div>
+  <div class="header-right">
+    <div id="check-status">Checking…</div>
+    <a id="btn-check"
+       class="btn-check"
+       href="https://github.com/aftanasmichal/zatecka-internet-check/actions/workflows/poll.yml"
+       target="_blank" rel="noopener">⟳ Check now</a>
+    <div id="last-updated"></div>
+  </div>
 </header>
 
 <div class="container">
@@ -493,6 +512,29 @@ function renderIncidents(events) {
   }).join('');
 }
 
+// ── Last GitHub Actions check ─────────────────────────────────────────────────
+
+const GH_RUNS_URL = 'https://api.github.com/repos/aftanasmichal/zatecka-internet-check/actions/workflows/poll.yml/runs?per_page=1';
+
+async function refreshCheckStatus() {
+  const el = document.getElementById('check-status');
+  try {
+    const data = await fetch(GH_RUNS_URL, { headers: { Accept: 'application/vnd.github+json' } }).then(r => r.json());
+    const run = data.workflow_runs?.[0];
+    if (!run) { el.innerHTML = '<span>No runs yet</span>'; return; }
+
+    const finished = new Date(run.updated_at);
+    const diffM = Math.round((Date.now() - finished) / 60000);
+    const ago = diffM < 2 ? 'just now' : diffM < 60 ? diffM + ' min ago' : Math.floor(diffM/60) + ' h ago';
+    const timeStr = finished.toLocaleString('cs-CZ', { ...CZ, timeStyle: 'short', dateStyle: 'short' });
+    const ok = run.conclusion === 'success';
+
+    el.innerHTML = `Last checked: <span class="${ok ? 'ok' : 'fail'}" title="${timeStr}">${ago}</span>`;
+  } catch {
+    el.innerHTML = 'Last checked: <span>—</span>';
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function refresh() {
@@ -503,7 +545,7 @@ async function refresh() {
     renderTimeline(events);
     renderIncidents(events);
     document.getElementById('last-updated').textContent =
-      'Updated ' + new Date().toLocaleString('cs-CZ', { ...CZ, timeStyle: 'short', dateStyle: 'short' });
+      'Dashboard updated ' + new Date().toLocaleString('cs-CZ', { ...CZ, timeStyle: 'short', dateStyle: 'short' });
   } catch (e) {
     console.error(e);
     document.getElementById('last-updated').textContent = 'Error loading data';
@@ -511,7 +553,9 @@ async function refresh() {
 }
 
 refresh();
+refreshCheckStatus();
 setInterval(refresh, 5 * 60 * 1000);
+setInterval(refreshCheckStatus, 60 * 1000);  // update "X min ago" every minute
 </script>
 </body>
 </html>
