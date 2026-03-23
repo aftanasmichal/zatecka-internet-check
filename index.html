@@ -201,10 +201,7 @@
   <h1>Žatecká <span>— Internet Status</span></h1>
   <div class="header-right">
     <div id="check-status">Checking…</div>
-    <a id="btn-check"
-       class="btn-check"
-       href="https://github.com/aftanasmichal/zatecka-internet-check/actions/workflows/poll.yml"
-       target="_blank" rel="noopener">⟳ Check now</a>
+    <button id="btn-check" class="btn-check">⟳ Check now</button>
   </div>
 </header>
 
@@ -548,10 +545,25 @@ async function refresh() {
   }
 }
 
+document.getElementById('btn-check').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-check');
+  btn.textContent = '⟳ Triggering…';
+  btn.disabled = true;
+  try {
+    const res = await fetch('https://zatecka-check-now.michal-aftanas.workers.dev', { method: 'POST' });
+    const data = await res.json();
+    btn.textContent = data.ok ? '✓ Triggered' : '✗ Failed';
+    if (data.ok) setTimeout(() => refreshCheckStatus(), 8000);
+  } catch {
+    btn.textContent = '✗ Error';
+  }
+  setTimeout(() => { btn.textContent = '⟳ Check now'; btn.disabled = false; }, 4000);
+});
+
 refresh();
 refreshCheckStatus();
 setInterval(refresh, 5 * 60 * 1000);
-setInterval(refreshCheckStatus, 60 * 1000);  // update "X min ago" every minute
+setInterval(refreshCheckStatus, 60 * 1000);
 </script>
 </body>
 </html>
