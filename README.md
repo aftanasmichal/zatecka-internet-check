@@ -3,7 +3,7 @@
 Dashboard monitoring internet stability at the PFC office on Žatecká street, Prague.
 Tracks two SD-WAN links reported by the FortiGate FGT-40 router via email.
 
-**Live dashboard:** https://zatecka-internet-check.pages.dev
+**Live dashboard:** https://itrinity.pages.dev/zatecka-internet-check/
 **GitHub repo:** https://github.com/aftanasmichal/zatecka-internet-check
 
 ---
@@ -107,9 +107,10 @@ wrangler deploy
 
 ### Cloudflare Pages (dashboard)
 Only needed when `index.html` changes — data updates go directly to GitHub, not through Pages.
+Static files live in `itrinity-pages/zatecka-internet-check/` in the CoS root.
 ```bash
-cd projects/work/zatecka-internet-check
-wrangler pages deploy . --project-name zatecka-internet-check --branch main --commit-dirty=true
+# from CoS root:
+npx wrangler pages deploy itrinity-pages --project-name itrinity --branch main --commit-dirty=true
 ```
 
 ### Worker secrets (if re-setting up from scratch)
