@@ -17,13 +17,16 @@ The script:
 import json
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-DATA_DIR = Path(__file__).parent.parent / "data"
+PROJECT_DIR = Path(__file__).parent.parent
+DATA_DIR = PROJECT_DIR / "data"
 INDEX_FILE = DATA_DIR / "index.json"
 MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
+CF_PROJECT = "zatecka-internet-check"
 
 
 def parse_email(html: str) -> dict:
@@ -90,6 +93,24 @@ def rotate(index: dict) -> tuple[dict, Path]:
     return index, new_path
 
 
+def git_commit_push(event: dict):
+    msg = f"data: {event['iface']} {event['from']}→{event['to']} at {event['ts']}"
+    subprocess.run(["git", "-C", str(PROJECT_DIR), "add", "data/"], check=True)
+    subprocess.run(["git", "-C", str(PROJECT_DIR), "commit", "-m", msg], check=True)
+    subprocess.run(["git", "-C", str(PROJECT_DIR), "push"], check=True)
+    print("[ingest] Pushed to GitHub", file=sys.stderr)
+
+
+def cf_deploy():
+    subprocess.run(
+        ["wrangler", "pages", "deploy", ".", "--project-name", CF_PROJECT,
+         "--branch", "main", "--commit-dirty=true"],
+        cwd=str(PROJECT_DIR),
+        check=True,
+    )
+    print("[ingest] Deployed to Cloudflare Pages", file=sys.stderr)
+
+
 def main():
     html = sys.stdin.read()
     if not html.strip():
@@ -115,6 +136,9 @@ def main():
     # Rotate if file exceeds size limit
     if data_path.stat().st_size > MAX_FILE_BYTES:
         rotate(index)
+
+    git_commit_push(event)
+    cf_deploy()
 
 
 if __name__ == "__main__":
