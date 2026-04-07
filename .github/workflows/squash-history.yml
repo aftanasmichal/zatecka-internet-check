@@ -1,0 +1,21 @@
+name: Squash history
+on:
+  schedule:
+    - cron: '0 3 1 * *' # 1st of each month at 3 AM UTC
+  workflow_dispatch:
+
+jobs:
+  squash:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          git checkout --orphan fresh
+          git add -A
+          git commit -m "data: monthly squash $(date +%Y-%m)"
+          git branch -M fresh main
+          git push --force origin main
