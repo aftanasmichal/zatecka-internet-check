@@ -64,13 +64,14 @@ export default {
 
 async function runPoll(env) {
   const gmailToken = await getGmailToken(env);
-  const messages   = await listGmailMessages(gmailToken);
 
-  // Record successful poll time regardless of whether new events exist
-  await env.KV?.put('lastPolledAt', new Date().toISOString()).catch(console.error);
+  // Use stored date to narrow Gmail query and stay under subrequest limit
+  const lastEventDate = await env.KV?.get('lastEventDate');
+  const messages = await listGmailMessages(gmailToken, lastEventDate);
 
   if (messages.length === 0) {
     console.log('No FortiGate emails found');
+    await env.KV?.put('lastPolledAt', new Date().toISOString()).catch(console.error);
     return { new_events: 0 };
   }
   console.log(`Checking ${messages.length} candidate emails`);
@@ -92,6 +93,7 @@ async function runPoll(env) {
 
   if (newEvents.length === 0) {
     console.log('No new events');
+    await env.KV?.put('lastPolledAt', new Date().toISOString()).catch(console.error);
     return { new_events: 0 };
   }
 
@@ -103,6 +105,11 @@ async function runPoll(env) {
     `data: ingest ${newEvents.length} FortiGate event(s) [skip ci]`,
   );
   console.log(`Committed ${newEvents.length} new event(s)`);
+
+  // Store newest event date for narrowing future Gmail queries
+  const newestDate = data.events[data.events.length - 1].ts.slice(0, 10);
+  await env.KV?.put('lastEventDate', newestDate).catch(console.error);
+  await env.KV?.put('lastPolledAt', new Date().toISOString()).catch(console.error);
 
   if (JSON.stringify(data).length > MAX_FILE_BYTES) {
     await rotateDataFile(env, index, indexSha);
@@ -131,8 +138,19 @@ async function getGmailToken(env) {
   return access_token;
 }
 
-async function listGmailMessages(token) {
-  const q = encodeURIComponent('from:fgt@palefire.com newer_than:8d');
+async function listGmailMessages(token, lastEventDate) {
+  let query;
+  if (lastEventDate) {
+    // Subtract 1 day as buffer, format as YYYY/MM/DD for Gmail
+    const d = new Date(lastEventDate + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() - 1);
+    const after = `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`;
+    query = `from:fgt@palefire.com after:${after}`;
+  } else {
+    query = 'from:fgt@palefire.com newer_than:3d';
+  }
+  console.log(`Gmail query: ${query}`);
+  const q = encodeURIComponent(query);
   const res = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=100`,
     { headers: { Authorization: `Bearer ${token}` } },
