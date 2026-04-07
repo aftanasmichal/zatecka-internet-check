@@ -31,7 +31,7 @@ export default {
 
   async fetch(request, env) {
     const cors = {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': 'https://itrinity.pages.dev',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     };
 
@@ -50,7 +50,7 @@ export default {
         return Response.json({ ok: true, ...result }, { headers: cors });
       } catch (err) {
         console.error('Manual poll failed:', err.message);
-        return Response.json({ ok: false, error: err.message }, { status: 500, headers: cors });
+        return Response.json({ ok: false, error: 'Poll failed' }, { status: 500, headers: cors });
       }
     }
 
