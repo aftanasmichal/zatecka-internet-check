@@ -187,6 +187,11 @@
     .ev-ongoing { color: var(--red); font-size: 0.72rem; margin-left: 6px; }
     .dur { color: var(--muted); font-variant-numeric: tabular-nums; }
     .empty-row td { text-align: center; color: var(--muted); padding: 28px 12px; }
+    .pagination { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 14px 0 4px; font-size: 0.82rem; }
+    .pagination button { background: var(--surface2); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 5px 14px; cursor: pointer; font-size: 0.78rem; }
+    .pagination button:hover { background: var(--border); }
+    .pagination button:disabled { opacity: 0.3; cursor: default; }
+    .pagination .page-info { color: var(--muted); }
 
     @media (max-width: 600px) {
       .status-grid { grid-template-columns: 1fr; }
@@ -247,6 +252,7 @@
       </thead>
       <tbody id="incidents-body"></tbody>
     </table>
+    <div class="pagination" id="incidents-pagination"></div>
   </div>
 </div>
 
@@ -465,11 +471,13 @@ function renderTimeline(events) {
 
 // ── Render: Incidents ─────────────────────────────────────────────────────────
 
-function renderIncidents(events) {
-  // Pair down→up events per interface
-  const incidents = [];
-  const open = {}; // iface → down event
+let allIncidents = [];
+let incidentPage = 1;
+const PER_PAGE = 20;
 
+function buildIncidents(events) {
+  const incidents = [];
+  const open = {};
   for (const ev of events) {
     if (ev.to === 'dead') {
       open[ev.iface] = ev;
@@ -478,21 +486,34 @@ function renderIncidents(events) {
       delete open[ev.iface];
     }
   }
-  // Still-open incidents
   for (const [iface, down] of Object.entries(open)) {
     incidents.push({ iface, down, up: null });
   }
-
-  // Sort newest first
   incidents.sort((a, b) => new Date(b.down.ts) - new Date(a.down.ts));
+  return incidents;
+}
 
+function renderIncidents(events) {
+  allIncidents = buildIncidents(events);
+  incidentPage = 1;
+  renderIncidentPage();
+}
+
+function renderIncidentPage() {
   const body = document.getElementById('incidents-body');
-  if (!incidents.length) {
+  const pag  = document.getElementById('incidents-pagination');
+
+  if (!allIncidents.length) {
     body.innerHTML = '<tr class="empty-row"><td colspan="4">No incidents recorded yet</td></tr>';
+    pag.innerHTML = '';
     return;
   }
 
-  body.innerHTML = incidents.slice(0, 100).map(inc => {
+  const totalPages = Math.ceil(allIncidents.length / PER_PAGE);
+  const start = (incidentPage - 1) * PER_PAGE;
+  const page  = allIncidents.slice(start, start + PER_PAGE);
+
+  body.innerHTML = page.map(inc => {
     const downT = new Date(inc.down.ts);
     const upT   = inc.up ? new Date(inc.up.ts) : null;
     const dur   = upT ? upT - downT : null;
@@ -509,6 +530,15 @@ function renderIncidents(events) {
       <td class="dur">${fmtDur(dur)}</td>
     </tr>`;
   }).join('');
+
+  pag.innerHTML = totalPages > 1
+    ? `<button id="pg-prev" ${incidentPage <= 1 ? 'disabled' : ''}>&#9664; Prev</button>
+       <span class="page-info">Page ${incidentPage} of ${totalPages}</span>
+       <button id="pg-next" ${incidentPage >= totalPages ? 'disabled' : ''}>Next &#9654;</button>`
+    : '';
+
+  document.getElementById('pg-prev')?.addEventListener('click', () => { incidentPage--; renderIncidentPage(); });
+  document.getElementById('pg-next')?.addEventListener('click', () => { incidentPage++; renderIncidentPage(); });
 }
 
 // ── Last poll status (from Worker KV) ─────────────────────────────────────────
