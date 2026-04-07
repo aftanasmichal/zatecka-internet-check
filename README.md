@@ -26,16 +26,22 @@ FortiGate router (FGT-40)
 
 Cloudflare Worker cron (every 5 min, reliable)
   → worker/index.js polls Gmail API for new FortiGate emails
+  → uses KV-stored lastEventDate to narrow Gmail query (after:YYYY/MM/DD)
   → new events appended to data/events-001.json (deduplicated by eventtime)
   → if new data: committed to GitHub via Contents API
-  → records last poll timestamp in Cloudflare KV
+  → records lastPolledAt + lastEventDate in Cloudflare KV after success
 
-Dashboard (https://zatecka-internet-check.pages.dev)
+Dashboard (https://itrinity.pages.dev/zatecka-internet-check/)
   → static HTML/JS served from Cloudflare Pages
   → fetches data/*.json directly from GitHub raw URLs (always current)
   → shows current status, uptime %, 7-day timeline, incidents
+  → incidents: paginated (20/page), filterable by interface (All/WAN/5G)
   → "Check Now" button triggers immediate poll via same Worker (POST /)
   → "Last checked" timestamp pulled from Worker KV (GET /)
+
+Monthly git history squash (.github/workflows/squash-history.yml)
+  → runs 1st of each month, replaces all git history with single commit
+  → prevents .git directory bloat from frequent data commits
 ```
 
 ---
@@ -43,7 +49,8 @@ Dashboard (https://zatecka-internet-check.pages.dev)
 ## File structure
 
 ```
-.github/workflows/poll.yml   GitHub Actions — workflow_dispatch only (emergency manual recovery)
+.github/workflows/poll.yml            GitHub Actions — workflow_dispatch only (emergency manual recovery)
+.github/workflows/squash-history.yml  Monthly git history squash (1st of month, also manual trigger)
 data/index.json              Lists all data files
 data/events-001.json         Event log (rotates at 10 MB → events-002.json, etc.)
 index.html                   Dashboard (single static file)
@@ -127,7 +134,10 @@ echo <token> | wrangler secret put GITHUB_TOKEN
 ```
 
 ### KV namespace
-The `POLLER_STATE` KV namespace (id: `620ec9cab32e4efd8391c6704cd673e0`) stores `lastPolledAt`.
+The `POLLER_STATE` KV namespace (id: `620ec9cab32e4efd8391c6704cd673e0`) stores:
+- `lastPolledAt` — ISO timestamp of last successful poll
+- `lastEventDate` — date (YYYY-MM-DD) of newest ingested event, used to narrow Gmail queries
+
 If re-creating: `wrangler kv namespace create POLLER_STATE` → update id in `wrangler.toml`.
 
 ---
