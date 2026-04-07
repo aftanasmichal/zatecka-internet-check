@@ -192,6 +192,11 @@
     .pagination button:hover { background: var(--border); }
     .pagination button:disabled { opacity: 0.3; cursor: default; }
     .pagination .page-info { color: var(--muted); }
+    .iface-filter { display: flex; gap: 6px; margin-left: auto; }
+    .iface-filter button { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .iface-filter button:hover { background: var(--border); }
+    .iface-filter button.active { background: var(--green); color: var(--bg); border-color: var(--green); }
+    .incidents-header { display: flex; align-items: center; }
 
     @media (max-width: 600px) {
       .status-grid { grid-template-columns: 1fr; }
@@ -240,7 +245,14 @@
   </div>
 
   <div class="panel">
-    <div class="panel-title">Incidents</div>
+    <div class="incidents-header">
+      <div class="panel-title">Incidents</div>
+      <div class="iface-filter" id="iface-filter">
+        <button class="active" data-iface="all">All</button>
+        <button data-iface="wan">WAN</button>
+        <button data-iface="a">5G</button>
+      </div>
+    </div>
     <table class="incidents-table">
       <thead>
         <tr>
@@ -472,7 +484,9 @@ function renderTimeline(events) {
 // ── Render: Incidents ─────────────────────────────────────────────────────────
 
 let allIncidents = [];
+let filteredIncidents = [];
 let incidentPage = 1;
+let incidentFilter = 'all';
 const PER_PAGE = 20;
 
 function buildIncidents(events) {
@@ -495,6 +509,13 @@ function buildIncidents(events) {
 
 function renderIncidents(events) {
   allIncidents = buildIncidents(events);
+  applyIncidentFilter();
+}
+
+function applyIncidentFilter() {
+  filteredIncidents = incidentFilter === 'all'
+    ? allIncidents
+    : allIncidents.filter(i => i.iface === incidentFilter);
   incidentPage = 1;
   renderIncidentPage();
 }
@@ -503,15 +524,15 @@ function renderIncidentPage() {
   const body = document.getElementById('incidents-body');
   const pag  = document.getElementById('incidents-pagination');
 
-  if (!allIncidents.length) {
-    body.innerHTML = '<tr class="empty-row"><td colspan="4">No incidents recorded yet</td></tr>';
+  if (!filteredIncidents.length) {
+    body.innerHTML = '<tr class="empty-row"><td colspan="4">No incidents recorded</td></tr>';
     pag.innerHTML = '';
     return;
   }
 
-  const totalPages = Math.ceil(allIncidents.length / PER_PAGE);
+  const totalPages = Math.ceil(filteredIncidents.length / PER_PAGE);
   const start = (incidentPage - 1) * PER_PAGE;
-  const page  = allIncidents.slice(start, start + PER_PAGE);
+  const page  = filteredIncidents.slice(start, start + PER_PAGE);
 
   body.innerHTML = page.map(inc => {
     const downT = new Date(inc.down.ts);
@@ -589,6 +610,15 @@ async function refresh() {
     console.error(e);
   }
 }
+
+document.getElementById('iface-filter').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-iface]');
+  if (!btn) return;
+  incidentFilter = btn.dataset.iface;
+  document.querySelectorAll('#iface-filter button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyIncidentFilter();
+});
 
 document.getElementById('btn-check').addEventListener('click', async () => {
   const btn = document.getElementById('btn-check');
