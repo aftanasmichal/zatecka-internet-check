@@ -271,6 +271,17 @@
   </div>
 
   <div class="panel">
+    <div class="panel-title">365-day Timeline (daily)</div>
+    <div class="timeline-rows" id="timeline-rows-daily"></div>
+    <div class="timeline-dates" id="timeline-dates-daily"></div>
+    <div class="timeline-legend">
+      <span><span class="swatch" style="background: var(--green-dim)"></span>Up (0-30 s)</span>
+      <span><span class="swatch" style="background: var(--orange-dim)"></span>Blip (31-60 s)</span>
+      <span><span class="swatch" style="background: var(--red-dim)"></span>Outage (61 s+)</span>
+    </div>
+  </div>
+
+  <div class="panel">
     <div class="incidents-header">
       <div class="panel-title">Incidents</div>
       <div class="iface-filter" id="iface-filter">
@@ -512,6 +523,49 @@ function renderTimeline(events) {
   datesEl.innerHTML = labels;
 }
 
+// ── Render: 365-day daily timeline ────────────────────────────────────────────
+
+function renderDailyTimeline(events) {
+  const now = new Date();
+  const start = new Date(now - 365 * 86400e3);
+  const DAYS = 365;
+  const DAY_MS = 86400e3;
+
+  const rowsEl  = document.getElementById('timeline-rows-daily');
+  const datesEl = document.getElementById('timeline-dates-daily');
+  rowsEl.innerHTML = '';
+
+  for (const [id, cfg] of Object.entries(IFACES)) {
+    let segs = '';
+    for (let i = 0; i < DAYS; i++) {
+      const segStart = new Date(start.getTime() + i * DAY_MS);
+      const segEnd   = new Date(segStart.getTime() + DAY_MS);
+      const downS = Math.round(downtimeMs(events, id, segStart, segEnd) / 1000);
+      let cls;
+      if (downS <= 30)      cls = 'up';
+      else if (downS <= 60) cls = 'warn';
+      else                  cls = 'down';
+      const label = segStart.toLocaleDateString('cs-CZ', { ...CZ, weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+      const title = downS > 0 ? `${label} · ${downS} s down` : `${label} · up`;
+      segs += `<div class="tseg ${cls}" title="${title}"></div>`;
+    }
+    rowsEl.insertAdjacentHTML('beforeend', `
+      <div class="timeline-row">
+        <div class="timeline-lbl">${id.toUpperCase()}</div>
+        <div class="timeline-bar">${segs}</div>
+      </div>`);
+  }
+
+  // Month labels: 13 labels evenly spaced across 365 days
+  let labels = '';
+  const SPAN = 365 * DAY_MS;
+  for (let m = 0; m <= 12; m++) {
+    const t = new Date(start.getTime() + (m / 12) * SPAN);
+    labels += `<span>${t.toLocaleDateString('cs-CZ', { ...CZ, month: 'short', year: '2-digit' })}</span>`;
+  }
+  datesEl.innerHTML = labels;
+}
+
 // ── Render: Incidents ─────────────────────────────────────────────────────────
 
 let allIncidents = [];
@@ -636,6 +690,7 @@ async function refresh() {
     renderCards(events);
     renderUptime(events);
     renderTimeline(events);
+    renderDailyTimeline(events);
     renderIncidents(events);
   } catch (e) {
     console.error(e);
