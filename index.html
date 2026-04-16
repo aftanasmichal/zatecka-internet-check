@@ -17,6 +17,8 @@
       --red: #ef4444;
       --red-dim: #7f1d1d;
       --yellow: #eab308;
+      --orange: #f59e0b;
+      --orange-dim: #78350f;
       --radius: 12px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -158,6 +160,8 @@
     .tseg { height: 100%; flex: 1; }
     .tseg.up   { background: var(--green-dim); }
     .tseg.up:hover { background: var(--green); cursor: default; }
+    .tseg.warn { background: var(--orange-dim); }
+    .tseg.warn:hover { background: var(--orange); cursor: default; }
     .tseg.down { background: var(--red-dim); }
     .tseg.down:hover { background: var(--red); cursor: default; }
     .timeline-dates {
@@ -167,6 +171,22 @@
       color: var(--muted);
       padding-left: 84px;
       margin-top: 6px;
+    }
+    .timeline-legend {
+      display: flex;
+      gap: 16px;
+      padding-left: 84px;
+      margin-top: 12px;
+      font-size: 0.68rem;
+      color: var(--muted);
+    }
+    .timeline-legend .swatch {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      margin-right: 5px;
+      vertical-align: -1px;
     }
 
     /* ── Incidents ── */
@@ -202,6 +222,7 @@
       .status-grid { grid-template-columns: 1fr; }
       .timeline-lbl { width: 40px; font-size: 0.68rem; }
       .timeline-dates { padding-left: 52px; }
+      .timeline-legend { padding-left: 52px; flex-wrap: wrap; gap: 10px; }
     }
   </style>
 </head>
@@ -242,6 +263,11 @@
     <div class="panel-title">7-day Timeline (hourly)</div>
     <div class="timeline-rows" id="timeline-rows"></div>
     <div class="timeline-dates" id="timeline-dates"></div>
+    <div class="timeline-legend">
+      <span><span class="swatch" style="background: var(--green-dim)"></span>No downtime</span>
+      <span><span class="swatch" style="background: var(--orange-dim)"></span>1-30 s down</span>
+      <span><span class="swatch" style="background: var(--red-dim)"></span>31 s+ down</span>
+    </div>
   </div>
 
   <div class="panel">
@@ -461,9 +487,14 @@ function renderTimeline(events) {
     for (let i = 0; i < HOURS; i++) {
       const segStart = new Date(start7.getTime() + i * HOUR_MS);
       const segEnd   = new Date(segStart.getTime() + HOUR_MS);
-      const s = stateAt(events, id, segStart);
+      const downS = Math.round(downtimeMs(events, id, segStart, segEnd) / 1000);
+      let cls;
+      if (downS === 0)      cls = 'up';
+      else if (downS <= 30) cls = 'warn';
+      else                  cls = 'down';
       const label = segStart.toLocaleString('cs-CZ', { ...CZ, weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit' });
-      segs += `<div class="tseg ${s === 'alive' ? 'up' : 'down'}" title="${label}"></div>`;
+      const title = downS > 0 ? `${label} · ${downS} s down` : `${label} · up`;
+      segs += `<div class="tseg ${cls}" title="${title}"></div>`;
     }
     rowsEl.insertAdjacentHTML('beforeend', `
       <div class="timeline-row">
