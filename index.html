@@ -275,9 +275,9 @@
     <div class="timeline-rows" id="timeline-rows-daily"></div>
     <div class="timeline-dates" id="timeline-dates-daily"></div>
     <div class="timeline-legend">
-      <span><span class="swatch" style="background: var(--green-dim)"></span>Up (0-30 s)</span>
-      <span><span class="swatch" style="background: var(--orange-dim)"></span>Blip (31-60 s)</span>
-      <span><span class="swatch" style="background: var(--red-dim)"></span>Outage (61 s+)</span>
+      <span><span class="swatch" style="background: var(--green-dim)"></span>No downtime</span>
+      <span><span class="swatch" style="background: var(--orange-dim)"></span>1-30 s down</span>
+      <span><span class="swatch" style="background: var(--red-dim)"></span>31 s+ down</span>
     </div>
   </div>
 
@@ -542,8 +542,8 @@ function renderDailyTimeline(events) {
       const segEnd   = new Date(segStart.getTime() + DAY_MS);
       const downS = Math.round(downtimeMs(events, id, segStart, segEnd) / 1000);
       let cls;
-      if (downS <= 30)      cls = 'up';
-      else if (downS <= 60) cls = 'warn';
+      if (downS === 0)      cls = 'up';
+      else if (downS <= 30) cls = 'warn';
       else                  cls = 'down';
       const label = segStart.toLocaleDateString('cs-CZ', { ...CZ, weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
       const title = downS > 0 ? `${label} · ${downS} s down` : `${label} · up`;
