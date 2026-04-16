@@ -561,7 +561,7 @@ function renderDailyTimeline(events) {
   const SPAN = 365 * DAY_MS;
   for (let m = 0; m <= 12; m++) {
     const t = new Date(start.getTime() + (m / 12) * SPAN);
-    labels += `<span>${t.toLocaleDateString('cs-CZ', { ...CZ, month: 'short', year: '2-digit' })}</span>`;
+    labels += `<span>${t.toLocaleDateString('en-US', { ...CZ, month: 'short', year: '2-digit' })}</span>`;
   }
   datesEl.innerHTML = labels;
 }
